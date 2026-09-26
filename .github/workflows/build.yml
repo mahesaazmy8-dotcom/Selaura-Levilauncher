@@ -1,0 +1,58 @@
+name: Build Selaura for LeviLauncher
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_CXX_STANDARD=23
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+
+      - name: Find DLL
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem -Path build -Filter "Selaura.dll" -Recurse | Select-Object -First 1
+          if (-not $dll) {
+            Write-Error "Selaura.dll was not produced."
+          }
+          Copy-Item $dll.FullName "Selaura.dll"
+
+      - name: Create LeviLauncher mod package
+        shell: pwsh
+        run: |
+          $manifest = @{
+            name = "Selaura"
+            entry = "Selaura.dll"
+            version = "1.0.0"
+            type = "preload-native"
+          } | ConvertTo-Json
+          Set-Content -Path manifest.json -Value $manifest -Encoding UTF8
+          Compress-Archive -Path Selaura.dll, manifest.json -DestinationPath Selaura-LeviLauncher.zip -Force
+
+      - name: Upload DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: Selaura-DLL
+          path: Selaura.dll
+
+      - name: Upload LeviLauncher package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Selaura-LeviLauncher
+          path: Selaura-LeviLauncher.zip
